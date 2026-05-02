@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="ATS_Pro_Logo.png" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI-Powered Applicant Tracking System - Evaluate resumes against job descriptions">
+    <title>ATS Pro - Intelligent Resume Screening</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-brain brand-icon"></i>
+                <span class="brand-text">ATS<span class="brand-accent">Pro</span></span>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button class="nav-btn">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Help</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Header Section -->
+            <header class="header">
+                <h1 class="header-title">Intelligent Resume Analysis</h1>
+                <p class="header-subtitle">
+                    Leverage AI-powered semantic matching and keyword analysis to evaluate candidate resumes against your job requirements
+                </p>
+            </header>
+
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="grid-2">
+                    <!-- Resume Upload -->
+                    <div class="upload-card">
+                        <div class="upload-header">
+                            <i class="fas fa-file-alt upload-icon"></i>
+                            <h3 class="upload-title">Resume Upload</h3>
+                        </div>
+                        
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="resumeFile" accept=".pdf,.docx,.txt" class="file-input" aria-label="Upload resume">
+                            <label for="resumeFile" class="file-label" id="fileLabel">
+                                <div class="file-upload-content">
+                                    <i class="fas fa-cloud-upload-alt file-upload-icon"></i>
+                                    <p class="file-upload-text">Click to upload or drag and drop</p>
+                                    <p class="file-upload-hint">PDF, DOCX, or TXT (Max 10MB)</p>
+                                </div>
+                            </label>
+                            
+                            <div class="file-preview" id="filePreview" style="display: none;">
+                                <div class="file-info">
+                                    <i class="fas fa-file-pdf file-type-icon"></i>
+                                    <div class="file-details">
+                                        <p class="file-name" id="fileName"></p>
+                                        <p class="file-size" id="fileSize"></p>
+                                    </div>
+                                </div>
+                                <button class="file-remove" id="fileRemove" aria-label="Remove file">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Job Description -->
+                    <div class="upload-card">
+                        <div class="upload-header">
+                            <i class="fas fa-briefcase upload-icon"></i>
+                            <h3 class="upload-title">Job Description</h3>
+                        </div>
+                        
+                        <textarea 
+                            id="jobDescription" 
+                            class="job-textarea" 
+                            placeholder="Paste the complete job description here...
+
+Include:
+• Required skills and qualifications
+• Experience requirements
+• Technical competencies
+• Soft skills
+• Education requirements"
+                            aria-label="Job description"
+                        ></textarea>
+                        
+                        <div class="char-counter">
+                            <span id="charCount">0</span> characters
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" id="clearBtn">
+                        <i class="fas fa-redo"></i>
+                        <span>Clear All</span>
+                    </button>
+                    <button class="btn btn-primary" id="analyzeBtn" disabled>
+                        <i class="fas fa-chart-line"></i>
+                        <span>Analyze Resume</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Loading State -->
+            <div class="loading-section" id="loadingSection" style="display: none;">
+                <div class="loading-card">
+                    <div class="loading-spinner"></div>
+                    <h3 class="loading-title">Analyzing Resume...</h3>
+                    <p class="loading-text" id="loadingText">Processing document</p>
+                    <div class="loading-progress">
+                        <div class="loading-progress-bar" id="loadingProgress"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <div class="results-header">
+                    <h2 class="results-title">
+                        <i class="fas fa-chart-bar"></i>
+                        Analysis Results
+                    </h2>
+                    <button class="btn-icon" id="exportBtn" aria-label="Export results">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>
+
+                <!-- Score Overview -->
+                <div class="score-overview">
+                    <div class="score-card score-card-primary">
+                        <div class="score-header">
+                            <span class="score-label">Overall Match</span>
+                            <i class="fas fa-award score-badge"></i>
+                        </div>
+                        <div class="score-value" id="finalScore">--</div>
+                        <div class="score-bar">
+                            <div class="score-bar-fill" id="finalScoreBar"></div>
+                        </div>
+                        <p class="score-status" id="scoreStatus">Pending Analysis</p>
+                    </div>
+
+                    <div class="score-card">
+                        <div class="score-header">
+                            <span class="score-label">Semantic Match</span>
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <div class="score-value score-value-sm" id="semanticScore">--</div>
+                        <div class="score-bar score-bar-sm">
+                            <div class="score-bar-fill score-bar-semantic" id="semanticScoreBar"></div>
+                        </div>
+                        <p class="score-description">Context & meaning alignment</p>
+                    </div>
+
+                    <div class="score-card">
+                        <div class="score-header">
+                            <span class="score-label">Keyword Match</span>
+                            <i class="fas fa-key"></i>
+                        </div>
+                        <div class="score-value score-value-sm" id="keywordScore">--</div>
+                        <div class="score-bar score-bar-sm">
+                            <div class="score-bar-fill score-bar-keyword" id="keywordScoreBar"></div>
+                        </div>
+                        <p class="score-description">Specific skill alignment</p>
+                    </div>
+                </div>
+
+                <!-- Detailed Insights -->
+                <div class="insights-grid">
+                    <!-- Missing Keywords -->
+                    <div class="insight-card">
+                        <div class="insight-header">
+                            <h3 class="insight-title">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Missing Keywords
+                            </h3>
+                            <span class="keyword-count" id="missingCount">0</span>
+                        </div>
+                        <div class="keyword-list" id="missingKeywords">
+                            <div class="empty-state">
+                                <i class="fas fa-check-circle"></i>
+                                <p>No missing keywords</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div class="insight-card">
+                        <div class="insight-header">
+                            <h3 class="insight-title">
+                                <i class="fas fa-lightbulb"></i>
+                                Recommendations
+                            </h3>
+                        </div>
+                        <div class="recommendations-list" id="recommendations">
+                            <!-- Dynamic content -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Score Breakdown -->
+                <div class="breakdown-card">
+                    <h3 class="breakdown-title">
+                        <i class="fas fa-chart-pie"></i>
+                        Score Breakdown
+                    </h3>
+                    <div class="breakdown-chart">
+                        <div class="breakdown-item">
+                            <div class="breakdown-label">
+                                <span class="breakdown-dot breakdown-dot-semantic"></span>
+                                <span>Semantic Analysis (60%)</span>
+                            </div>
+                            <div class="breakdown-bar">
+                                <div class="breakdown-bar-fill breakdown-bar-semantic" id="semanticBreakdown"></div>
+                            </div>
+                            <span class="breakdown-value" id="semanticBreakdownValue">--</span>
+                        </div>
+                        <div class="breakdown-item">
+                            <div class="breakdown-label">
+                                <span class="breakdown-dot breakdown-dot-keyword"></span>
+                                <span>Keyword Matching (40%)</span>
+                            </div>
+                            <div class="breakdown-bar">
+                                <div class="breakdown-bar-fill breakdown-bar-keyword" id="keywordBreakdown"></div>
+                            </div>
+                            <span class="breakdown-value" id="keywordBreakdownValue">--</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <p class="footer-text">
+                    <i class="fas fa-shield-alt"></i>
+                    Powered by AI • Secure & Confidential
+                </p>
+                <p class="footer-copyright">
+                    © 2026 ATS Pro. All rights reserved.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <i class="toast-icon fas fa-check-circle"></i>
+        <span class="toast-message" id="toastMessage"></span>
+    </div>
+
+    <!-- Scripts -->
+    <script src="scripts.js"></script>
+</body>
+</html>
