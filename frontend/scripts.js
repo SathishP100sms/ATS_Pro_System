@@ -1,6 +1,6 @@
 // Configuration
 const CONFIG = {
-    API_BASE_URL: 'http://localhost:8000',
+    API_BASE_URL: 'https://ats-pro-system.onrender.com',
     MAX_FILE_SIZE: 10 * 1024 * 1024, 
     ALLOWED_EXTENSIONS: ['pdf', 'docx', 'txt'],
     THEME_STORAGE_KEY: 'ats-theme',
