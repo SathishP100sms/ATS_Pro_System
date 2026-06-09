@@ -134,19 +134,4 @@ async def startup_event():
     logger.info(f"📎 Allowed formats: {ALLOWED_EXTENSIONS}")
     logger.info("=" * 50)
 
-# ---------------- FOR RENDER DEPLOYMENT ---------------- #
-# This is CRITICAL for Render to detect the port correctly
-if __name__ == "__main__":
-    import uvicorn
-    
-    # Get port from environment variable (Render sets this)
-    port = int(os.environ.get("PORT", 8000))
-    
-    logger.info(f"🚀 Starting server on port {port}")
-    
-    uvicorn.run(
-        app,
-        host="0.0.0.0",  # Must be 0.0.0.0 for Render
-        port=port,
-        log_level="info"
-    )
+
