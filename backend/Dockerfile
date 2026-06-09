@@ -4,9 +4,12 @@ FROM python:3.11-slim
 WORKDIR /api
 # Install any needed packages specified in requirements.txt
 COPY requirements.txt .
-# Install the dependencies
-RUN pip install --no-cache-dir -r /api/requirements.txt
-# Copy the current directory contents into the container at /api
+# Install PyTorch with CPU support
+RUN pip install --no-cache-dir \
+    torch --index-url https://download.pytorch.org/whl/cpu
+    
+# Install other dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . /api
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
