@@ -51,18 +51,19 @@ Keyword Score: Measures specific skill/requirement matches
 ### Prerequisites
 
 - Python 3.8 or higher
+- Docker (for containerized local testing)
 - Node.js (optional, for frontend development)
 - 10MB free disk space
 
-### Backend Setup
+### Backend Setup (Local Python)
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/SathisP100sms/ATS_Pro_System.git
-cd ats-pro
+git clone https://github.com/SathishP100sms/ATS_Pro_System.git
+cd ATS_Pro_System
 ```
 
-2. **Create virtual environment**
+2. **Create and activate a virtual environment**
 ```bash
 # Windows
 python -m venv venv
@@ -79,15 +80,28 @@ cd backend
 pip install -r requirements.txt
 ```
 
-4. **Download spaCy model**
-```bash
-python -m spacy download en_core_web_sm
-```
-
-5. **Run the backend server**
+4. **Run the backend server**
 ```bash
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
+
+### Backend Setup (Docker)
+
+1. **Build the Docker image**
+```bash
+cd ATS_Pro_System/backend
+docker build -t ats_system:V1.0 .
+```
+
+2. **Run the container locally**
+```bash
+docker run --rm -p 8000:8000 ats_system:V1.0
+```
+
+3. **Open the API**
+- `http://localhost:8000`
+- `http://localhost:8000/docs`
+- `http://localhost:8000/redoc`
 
 ### Frontend Setup
 
@@ -96,12 +110,10 @@ uvicorn app:app --reload --host 0.0.0.0 --port 8000
 cd frontend
 ```
 
-2. **Option A: Direct file opening**
-```bash
-# Simply open index.html in your browser
-```
+2. **Open directly**
+- Open `frontend/index.html` in your browser
 
-3. **Option B: Using a local server (recommended)**
+3. **Or use a local development server**
 ```bash
 # Using Python
 python -m http.server 3000
@@ -109,6 +121,10 @@ python -m http.server 3000
 # OR using Node.js
 npx http-server -p 3000
 ```
+
+4. **Open the frontend**
+- `http://localhost:3000`
+
 ---
 
 ## 💻 Usage
@@ -342,6 +358,73 @@ final_score = (semantic_score * 0.6) + (keyword_score * 0.4)
 **Score Interpretation:**
 - **90-100**: Excellent Match - Highly Recommended
 - **75-89**: Strong Match - Recommended
+
+---
+
+## 🚀 Deployment & CI/CD
+
+### GitHub Actions + Self-hosted Runner
+
+This project includes a deployment workflow at `.github/workflows/deploy.yml` that runs on a **self-hosted GitHub Actions runner**.
+
+The workflow performs these tasks:
+- checks out the repository
+- configures AWS credentials from repository secrets
+- logs in to Amazon ECR
+- builds the Docker image from `backend/`
+- tags and pushes the image to ECR
+- pulls the pushed image back on the runner host
+- stops and removes the existing container
+- starts a fresh container on port `8000`
+
+### Required GitHub Secrets
+
+Add these secrets to your repository settings:
+- `AWS_REGION`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_ECR_LOGIN_URI`
+- `ECR_REPOSITORY_NAME`
+
+### Workflow Notes
+
+- `runs-on: self-hosted` means the job executes on your own runner machine, not GitHub-hosted infrastructure.
+- The self-hosted runner must have Docker installed and permissions to run containers.
+- Port `8000` must be open on the runner host so the backend remains accessible.
+
+### AWS Deployment Flow
+
+1. Push code to `main`
+2. GitHub Actions triggers `.github/workflows/deploy.yml`
+3. Docker image is built locally on the self-hosted runner
+4. Image is pushed to Amazon ECR
+5. Runner pulls the image and runs the container
+
+### Local Docker Run Example
+
+Build and run locally for development or testing:
+```bash
+cd ATS_Pro_System/backend
+docker build -t ats_system:V1.0 .
+docker run --rm -p 8000:8000 ats_system:V1.0
+```
+
+Then open the API docs at:
+- `http://localhost:8000/docs`
+- `http://localhost:8000/redoc`
+
+### Remote / Codespace Notes
+
+If you are using a remote environment such as GitHub Codespaces or another cloud IDE, use the forwarded preview URL for port `8000` instead of `localhost`.
+
+---
+
+## 📌 Notes
+
+- The backend Dockerfile is located at `backend/Dockerfile`.
+- The FastAPI entrypoint is `app:app` and listens on `0.0.0.0:8000`.
+- For a production-grade AWS deployment, you can extend this workflow to ECS or EKS by replacing the `docker run` step with the appropriate AWS deployment commands.
+
 - **60-74**: Good Match - Consider
 - **45-59**: Moderate Match - Review Carefully
 - **0-44**: Weak Match - Not Recommended
