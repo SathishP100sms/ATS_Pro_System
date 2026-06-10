@@ -1,6 +1,6 @@
 // Configuration
 const CONFIG = {
-    API_BASE_URL: 'https://ats-pro-system.onrender.com',
+    API_BASE_URL: 'AWS_API_GATEWAY_URL', // Replace with your actual API Gateway URL OR use environment variable for dynamic configuration
     MAX_FILE_SIZE: 10 * 1024 * 1024, 
     ALLOWED_EXTENSIONS: ['pdf', 'docx', 'txt'],
     THEME_STORAGE_KEY: 'ats-theme',
