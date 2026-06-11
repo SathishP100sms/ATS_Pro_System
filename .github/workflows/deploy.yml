@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION: us-east-1
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
   ECR_REGISTRY: ${{ secrets.AWS_ECR_LOGIN_URI }}
   IMAGE_TAG: latest
@@ -15,6 +15,7 @@ env:
 jobs:
   deploy:
     runs-on: self-hosted
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -24,7 +25,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -33,37 +34,31 @@ jobs:
       - name: Build Docker Image
         run: |
           docker build \
-            -t $ECR_REPOSITORY:$IMAGE_TAG \
+            -t ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} \
             ./backend
-
-      - name: Tag Docker Image
-        run: |
-          docker tag \
-            $ECR_REPOSITORY:$IMAGE_TAG \
-            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Push Docker Image to ECR
         run: |
           docker push \
-            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
 
       - name: Pull Latest Image
         run: |
           docker pull \
-            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
 
       - name: Stop Existing Container
         run: |
-          docker stop $CONTAINER_NAME || true
-          docker rm $CONTAINER_NAME || true
+          docker stop ${CONTAINER_NAME} || true
+          docker rm ${CONTAINER_NAME} || true
 
       - name: Run New Container
         run: |
           docker run -d \
-            --name $CONTAINER_NAME \
+            --name ${CONTAINER_NAME} \
             --restart unless-stopped \
             -p 8000:8000 \
-            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
 
       - name: Cleanup Unused Images
         run: |
