@@ -15,6 +15,8 @@ env:
 jobs:
   deploy:
     runs-on: self-hosted
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout Repository
@@ -25,42 +27,39 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build Docker Image
+      - name: Set Lowercase Image URI
+        id: image-uri
         run: |
-          docker build \
-            -t ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} \
-            ./backend
+          IMAGE_URI=$(echo "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        run: docker build -t ${{ env.IMAGE_URI }} ./backend
 
       - name: Push Docker Image to ECR
-        run: |
-          docker push \
-            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+        run: docker push ${{ env.IMAGE_URI }}
 
       - name: Pull Latest Image
-        run: |
-          docker pull \
-            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+        run: docker pull ${{ env.IMAGE_URI }}
 
       - name: Stop Existing Container
         run: |
-          docker stop ${CONTAINER_NAME} || true
-          docker rm ${CONTAINER_NAME} || true
+          docker stop ${{ env.CONTAINER_NAME }} || true
+          docker rm ${{ env.CONTAINER_NAME }} || true
 
       - name: Run New Container
         run: |
           docker run -d \
-            --name ${CONTAINER_NAME} \
+            --name ${{ env.CONTAINER_NAME }} \
             --restart unless-stopped \
             -p 8000:8000 \
-            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+            ${{ env.IMAGE_URI }}
 
       - name: Cleanup Unused Images
-        run: |
-          docker image prune -af
-
+        run: docker image prune -af
