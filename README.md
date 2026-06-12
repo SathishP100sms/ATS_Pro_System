@@ -393,14 +393,6 @@ Add these secrets to your repository settings:
 5. Runner pulls the image and runs the container
 
 ---
-
-## 📝 Notes
-
-- The frontend is built with plain HTML/CSS/JS and does not require a frontend build pipeline.
-- The backend can be deployed via Docker and hosted on any container-ready environment.
-- GitHub Actions deploys the backend automatically to a self-hosted runner configured with AWS credentials.
-
----
 # ATS Backend Deployment — CI/CD Pipeline on AWS EC2 via ECR
 
 A complete guide documenting the challenges faced and solutions applied during the deployment of the ATS Backend system using GitHub Actions, Docker, Amazon ECR, and AWS EC2.
@@ -762,6 +754,13 @@ http://<your-ec2-public-ip>:8000
 | 6 | Use `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to stay ahead of Node.js deprecations |
 | 7 | Add `docker image prune -af` at the end of every pipeline to keep disk usage low |
 
+---
+
+## 📝 Notes
+
+- The frontend is built with plain HTML/CSS/JS and does not require a frontend build pipeline.
+- The backend can be deployed via Docker and hosted on any container-ready environment.
+- GitHub Actions deploys the backend automatically to a self-hosted runner configured with AWS credentials.
 
 ## 🤝 Contributing
 
