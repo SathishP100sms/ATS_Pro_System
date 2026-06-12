@@ -401,6 +401,367 @@ Add these secrets to your repository settings:
 - GitHub Actions deploys the backend automatically to a self-hosted runner configured with AWS credentials.
 
 ---
+# ATS Backend Deployment — CI/CD Pipeline on AWS EC2 via ECR
+
+A complete guide documenting the challenges faced and solutions applied during the deployment of the ATS Backend system using GitHub Actions, Docker, Amazon ECR, and AWS EC2.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI + Uvicorn (Python 3.11) |
+| Containerization | Docker |
+| Container Registry | Amazon ECR (Elastic Container Registry) |
+| Hosting | AWS EC2 (Ubuntu, us-east-1) |
+| CI/CD | GitHub Actions (Self-Hosted Runner) |
+| ML Libraries | PyTorch (CPU), spaCy, sentence-transformers |
+
+---
+
+## Final Working Workflow File
+
+```yaml
+name: ATS Backend Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+  ECR_REGISTRY: ${{ secrets.AWS_ECR_LOGIN_URI }}
+  IMAGE_TAG: latest
+  CONTAINER_NAME: ats-api
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set Lowercase Image URI
+        id: image-uri
+        run: |
+          IMAGE_URI=$(echo "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        run: docker build -t ${{ env.IMAGE_URI }} ./backend
+
+      - name: Push Docker Image to ECR
+        run: docker push ${{ env.IMAGE_URI }}
+
+      - name: Pull Latest Image
+        run: docker pull ${{ env.IMAGE_URI }}
+
+      - name: Stop Existing Container
+        run: |
+          docker stop ${{ env.CONTAINER_NAME }} || true
+          docker rm ${{ env.CONTAINER_NAME }} || true
+
+      - name: Run New Container
+        run: |
+          docker run -d \
+            --name ${{ env.CONTAINER_NAME }} \
+            --restart unless-stopped \
+            -p 8000:8000 \
+            ${{ env.IMAGE_URI }}
+
+      - name: Cleanup Unused Images
+        run: docker image prune -af
+```
+
+---
+
+## Required GitHub Secrets
+
+Go to **GitHub Repo → Settings → Secrets and variables → Actions** and add:
+
+| Secret Name | Description | Example |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | IAM user access key | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | IAM user secret key | `wJalrXUtnFEMI/...` |
+| `ECR_REPOSITORY_NAME` | ECR repo name (lowercase) | `ats-ecr` |
+| `AWS_ECR_LOGIN_URI` | ECR registry URI | `123456789.dkr.ecr.us-east-1.amazonaws.com` |
+
+---
+
+## Challenges Faced & Solutions
+
+---
+
+### Challenge 1 — AWS Credentials Could Not Be Loaded
+
+**Error:**
+```
+Credentials could not be loaded, please check your action inputs:
+Could not load credentials from any providers
+```
+
+**Cause:**
+GitHub Actions secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` were either not set, incorrectly named, or had extra whitespace when pasted.
+
+**Solution:**
+- Go to **GitHub → Settings → Secrets → Actions**
+- Delete and re-add secrets carefully (no extra spaces)
+- Secret names are **case-sensitive** — must match exactly
+- Verify the IAM user's access key is **Active** in AWS Console
+
+---
+
+### Challenge 2 — Invalid Docker Image Reference (Uppercase)
+
+**Error:**
+```
+invalid argument "***/***:latest" for "-t, --tag" flag:
+invalid reference format: repository name (***) must be lowercase
+```
+
+**Cause:**
+The `ECR_REPOSITORY_NAME` secret contained uppercase letters. Docker requires all image names to be lowercase.
+
+**Solution:**
+Added a dedicated step to convert the full image URI to lowercase before use:
+
+```yaml
+- name: Set Lowercase Image URI
+  id: image-uri
+  run: |
+    IMAGE_URI=$(echo "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}" | tr '[:upper:]' '[:lower:]')
+    echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+```
+
+All subsequent steps reference `${{ env.IMAGE_URI }}` instead of constructing the URI manually.
+
+---
+
+### Challenge 3 — Docker Permission Denied on Self-Hosted Runner
+
+**Error:**
+```
+permission denied while trying to connect to the Docker daemon socket
+at unix:///var/run/docker.sock
+```
+
+**Cause:**
+The self-hosted runner user (`ubuntu`) was not in the `docker` group, so it couldn't execute Docker commands without `sudo`.
+
+**Solution:**
+SSH into EC2 and run:
+
+```bash
+# Add ubuntu user to docker group
+sudo usermod -aG docker ubuntu
+
+# Apply group change immediately
+newgrp docker
+
+# Verify docker works without sudo
+docker ps
+```
+
+Then restart the runner:
+```bash
+cd ~/actions-runner
+./run.sh
+```
+
+> **Note:** A logout/login or reboot is required for group changes to fully take effect.
+
+---
+
+### Challenge 4 — EC2 Disk Full (No Space Left on Device)
+
+**Error:**
+```
+System.IO.IOException: No space left on device
+```
+
+**Cause:**
+The EC2 instance had only 8GB storage. The Docker image (containing PyTorch ~192MB, spaCy, sentence-transformers, and other ML libraries) consumed all available disk space during the build.
+
+**Disk usage at time of error:**
+```
+/dev/root    7.7G    6.0G    630M    91%    /
+```
+
+**Solution — Immediate cleanup:**
+```bash
+# Remove all unused Docker resources
+docker system prune -af --volumes
+
+# Clean runner diagnostic logs
+rm -rf ~/actions-runner/_diag/*.log
+rm -rf ~/actions-runner/_work/_temp/*
+
+# Clean apt cache
+sudo apt-get clean
+sudo apt-get autoremove -y
+```
+
+**Solution — Permanent fix (increase EBS volume):**
+1. Go to **AWS Console → EC2 → Volumes**
+2. Select volume → **Actions → Modify Volume** → increase to **20GB**
+3. Apply the resize on EC2:
+
+```bash
+# Extend the partition
+sudo growpart /dev/nvme0n1 1
+
+# Resize the filesystem
+sudo resize2fs /dev/nvme0n1p1
+
+# Verify
+df -h
+```
+
+> **Recommendation:** Use at least **20GB** when deploying ML-heavy Docker images.
+
+---
+
+### Challenge 5 — ECR Repository Does Not Exist
+
+**Error:**
+```
+error from registry: The repository with name '***' does not
+exist in the registry with id '220438081445'
+```
+
+**Cause:**
+The ECR repository was never created in AWS before trying to push the Docker image to it.
+
+**Solution:**
+
+**Option A — AWS Console:**
+1. Go to **AWS Console → ECR → Repositories**
+2. Click **Create repository**
+3. Set visibility: **Private**
+4. Enter repository name — must **exactly match** `ECR_REPOSITORY_NAME` secret (all lowercase)
+5. Click **Create repository**
+
+**Option B — AWS CLI:**
+```bash
+aws ecr create-repository \
+  --repository-name ats-ecr \
+  --region us-east-1
+```
+
+---
+
+### Challenge 6 — Node.js 20 Deprecation Warning
+
+**Warning:**
+```
+Node.js 20 actions are deprecated. Actions will be forced to run
+with Node.js 24 by default starting June 16th, 2026.
+```
+
+**Cause:**
+GitHub Actions like `actions/checkout@v4` and `aws-actions/configure-aws-credentials@v4` were running on the deprecated Node.js 20 runtime on the self-hosted runner.
+
+**Solution:**
+Add the following environment variable to the deploy job to opt into Node.js 24:
+
+```yaml
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+```
+
+---
+
+## Deployment Pipeline Overview
+
+```
+Push to main
+     │
+     ▼
+GitHub Actions Triggered
+     │
+     ▼
+Self-Hosted Runner (EC2) picks up job
+     │
+     ├── Checkout Repository
+     ├── Configure AWS Credentials (IAM)
+     ├── Login to Amazon ECR
+     ├── Set Lowercase Image URI
+     ├── Build Docker Image (./backend/Dockerfile)
+     ├── Push Image to ECR
+     ├── Pull Latest Image from ECR
+     ├── Stop & Remove Existing Container
+     ├── Run New Container (port 8000)
+     └── Cleanup Unused Docker Images
+```
+
+---
+
+## EC2 Security Group Rules
+
+| Port | Protocol | Source | Purpose |
+|---|---|---|---|
+| 22 | TCP | 0.0.0.0/0 | SSH access |
+| 80 | TCP | 0.0.0.0/0 | HTTP |
+| 8000 | TCP | 0.0.0.0/0 | FastAPI backend |
+
+---
+
+## Verifying the Deployment
+
+After a successful pipeline run, verify on EC2:
+
+```bash
+# Check container is running
+docker ps
+
+# Test API health
+curl http://localhost:8000
+```
+
+Expected response:
+```json
+{"message":"ATS System is running","version":"1.0.0","status":"healthy"}
+```
+
+Public access:
+```
+http://<your-ec2-public-ip>:8000
+```
+
+---
+
+## Key Lessons Learned
+
+| # | Lesson |
+|---|---|
+| 1 | Always verify GitHub secrets are set correctly before debugging workflow logic |
+| 2 | Docker image names must be **all lowercase** — enforce with `tr '[:upper:]' '[:lower:]'` |
+| 3 | Self-hosted runner user must be in the `docker` group |
+| 4 | ML-heavy Docker images need **20GB+** EC2 storage |
+| 5 | Always create the ECR repository **before** running the pipeline |
+| 6 | Use `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to stay ahead of Node.js deprecations |
+| 7 | Add `docker image prune -af` at the end of every pipeline to keep disk usage low |
+
 
 ## 🤝 Contributing
 
