@@ -32,7 +32,7 @@ ATS_Pro_System/
 │   ├── Dockerfile
 │   ├── .dockerignore
 │   └── __init__.py
-│
+│   └── logger.py
 ├── frontend/
 │   ├── index.html
 │   ├── styles.css
