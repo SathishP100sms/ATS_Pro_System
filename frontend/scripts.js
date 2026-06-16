@@ -1,7 +1,8 @@
 // Configuration
 const CONFIG = {
-    API_BASE_URL: 'AWS_API_GATEWAY_URL', // Replace with your actual API Gateway URL OR use environment variable for dynamic configuration
-    MAX_FILE_SIZE: 10 * 1024 * 1024, 
+    API_BASE_URL: 'http://localhost:8000/api',
+    MAX_FILE_SIZE: 10 * 1024 * 1024,
+    API_TIMEOUT: 120000,
     ALLOWED_EXTENSIONS: ['pdf', 'docx', 'txt'],
     THEME_STORAGE_KEY: 'ats-theme',
 };
@@ -22,23 +23,23 @@ const elements = {
     fileName: document.getElementById('fileName'),
     fileSize: document.getElementById('fileSize'),
     fileRemove: document.getElementById('fileRemove'),
-    
+
     // Job Description
     jobDescription: document.getElementById('jobDescription'),
     charCount: document.getElementById('charCount'),
-    
+
     // Buttons
     analyzeBtn: document.getElementById('analyzeBtn'),
     clearBtn: document.getElementById('clearBtn'),
     exportBtn: document.getElementById('exportBtn'),
     themeToggle: document.getElementById('themeToggle'),
-    
+
     // Sections
     loadingSection: document.getElementById('loadingSection'),
     resultsSection: document.getElementById('resultsSection'),
     loadingText: document.getElementById('loadingText'),
     loadingProgress: document.getElementById('loadingProgress'),
-    
+
     // Results
     finalScore: document.getElementById('finalScore'),
     finalScoreBar: document.getElementById('finalScoreBar'),
@@ -54,7 +55,7 @@ const elements = {
     semanticBreakdownValue: document.getElementById('semanticBreakdownValue'),
     keywordBreakdown: document.getElementById('keywordBreakdown'),
     keywordBreakdownValue: document.getElementById('keywordBreakdownValue'),
-    
+
     // Toast
     toast: document.getElementById('toast'),
     toastMessage: document.getElementById('toastMessage'),
@@ -82,14 +83,16 @@ function initializeTheme() {
 function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(CONFIG.THEME_STORAGE_KEY, theme);
-    
+
     const icon = elements.themeToggle.querySelector('i');
-    if (theme === 'dark') {
-        icon.classList.remove('fa-moon');
-        icon.classList.add('fa-sun');
-    } else {
-        icon.classList.remove('fa-sun');
-        icon.classList.add('fa-moon');
+    if (icon) {
+        if (theme === 'dark') {
+            icon.classList.remove('fa-moon');
+            icon.classList.add('fa-sun');
+        } else {
+            icon.classList.remove('fa-sun');
+            icon.classList.add('fa-moon');
+        }
     }
 }
 
@@ -107,25 +110,25 @@ function toggleTheme() {
 function attachEventListeners() {
     // Theme Toggle
     elements.themeToggle.addEventListener('click', toggleTheme);
-    
+
     // File Upload
     elements.resumeFile.addEventListener('change', handleFileSelect);
     elements.fileRemove.addEventListener('click', removeFile);
-    
+
     // Drag and Drop
     elements.fileLabel.addEventListener('dragover', handleDragOver);
     elements.fileLabel.addEventListener('dragleave', handleDragLeave);
     elements.fileLabel.addEventListener('drop', handleFileDrop);
-    
+
     // Job Description
     elements.jobDescription.addEventListener('input', handleJobDescriptionInput);
-    
+
     // Buttons
     elements.analyzeBtn.addEventListener('click', analyzeResume);
     elements.clearBtn.addEventListener('click', clearAll);
     elements.exportBtn.addEventListener('click', exportResults);
-    
-    // Prevent default drag behavior
+
+    // Prevent default drag behavior on body
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         document.body.addEventListener(eventName, preventDefaults, false);
     });
@@ -163,7 +166,7 @@ function handleFileDrop(e) {
     e.preventDefault();
     elements.fileLabel.style.borderColor = 'var(--color-border)';
     elements.fileLabel.style.backgroundColor = 'var(--color-bg-secondary)';
-    
+
     const file = e.dataTransfer.files[0];
     if (file) {
         validateAndSetFile(file);
@@ -171,20 +174,17 @@ function handleFileDrop(e) {
 }
 
 function validateAndSetFile(file) {
-    // Validate file extension
     const extension = file.name.split('.').pop().toLowerCase();
     if (!CONFIG.ALLOWED_EXTENSIONS.includes(extension)) {
         showToast(`Invalid file type. Allowed: ${CONFIG.ALLOWED_EXTENSIONS.join(', ').toUpperCase()}`, 'error');
         return;
     }
-    
-    // Validate file size
+
     if (file.size > CONFIG.MAX_FILE_SIZE) {
         showToast(`File too large. Maximum size: ${CONFIG.MAX_FILE_SIZE / (1024 * 1024)}MB`, 'error');
         return;
     }
-    
-    // Set file
+
     state.selectedFile = file;
     displayFilePreview(file);
     updateAnalyzeButtonState();
@@ -192,19 +192,20 @@ function validateAndSetFile(file) {
 }
 
 function displayFilePreview(file) {
-    // Hide upload label, show preview
     elements.fileLabel.style.display = 'none';
     elements.filePreview.style.display = 'flex';
-    
-    // Set file details
+
     elements.fileName.textContent = file.name;
     elements.fileSize.textContent = formatFileSize(file.size);
-    
-    // Set appropriate icon
+
     const extension = file.name.split('.').pop().toLowerCase();
     const iconClass = getFileIcon(extension);
     const icon = elements.filePreview.querySelector('.file-type-icon');
-    icon.className = `fas ${iconClass} file-type-icon`;
+
+    // FIX: null check before modifying icon
+    if (icon) {
+        icon.className = `fas ${iconClass} file-type-icon`;
+    }
 }
 
 function removeFile() {
@@ -230,7 +231,7 @@ function formatFileSize(bytes) {
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
 /* ==========================================
@@ -255,72 +256,119 @@ function updateAnalyzeButtonState() {
 
 async function analyzeResume() {
     if (state.isAnalyzing) return;
-    
+
     state.isAnalyzing = true;
     elements.analyzeBtn.disabled = true;
     elements.analyzeBtn.classList.add('loading');
-    
-    // Show loading
+
     showLoading();
-    
+
+    // FIX: store interval ID so we can clear it on error/completion
+    const progressInterval = simulateProgress();
+
     try {
-        // Simulate progress
-        simulateProgress();
-        
-        // Prepare form data
         const formData = new FormData();
         formData.append('resume_file', state.selectedFile);
         formData.append('jd_text', elements.jobDescription.value.trim());
-        
-        // Make API call
+
+        console.log(
+    'Sending request:',
+    {
+        file: state.selectedFile?.name,
+        jdLength:
+            elements.jobDescription.value.length
+    }
+);
+
+        // FIX: added AbortController for timeout support
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
+
         const response = await fetch(`${CONFIG.API_BASE_URL}/evaluate/`, {
             method: 'POST',
             body: formData,
+            signal: controller.signal,
         });
-        
+
+        clearTimeout(timeoutId);
+
+        console.log(
+    'Response status:',
+    response.status
+);
+
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Analysis failed');
+            let errorMessage = 'Analysis failed';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.detail || errorMessage;
+            } catch (e) {
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(
+    `[${response.status}] ${errorMessage}`
+);
         }
-        
-        const result = await response.json();
+
+        let result;
+        try {
+            result = await response.json();
+        } catch (e) {
+            throw new Error('Failed to parse server response. Please ensure the backend is running correctly.');
+        }
+
         state.analysisResult = result;
-        
-        // Hide loading, show results
+
+        // FIX: clear progress interval on success
+        clearInterval(progressInterval);
+
         hideLoading();
         displayResults(result);
         showToast('Analysis complete!', 'success');
-        
+
     } catch (error) {
         console.error('Analysis error:', error);
+
+        // FIX: clear progress interval on error too
+        clearInterval(progressInterval);
+
         hideLoading();
-        showToast(error.message || 'Failed to analyze resume. Please try again.', 'error');
+
+        const errorMsg = error.name === 'AbortError'
+            ? 'Request timed out. Please check your connection and try again.'
+            : error.message || 'Failed to analyze resume. Please try again.';
+
+        showToast(errorMsg, 'error');
     } finally {
         state.isAnalyzing = false;
         elements.analyzeBtn.disabled = false;
         elements.analyzeBtn.classList.remove('loading');
+        updateAnalyzeButtonState();
     }
 }
 
+// FIX: returns interval ID so caller can clear it
 function simulateProgress() {
     const steps = [
-        { text: 'Uploading resume...', delay: 500 },
-        { text: 'Extracting text content...', delay: 1000 },
-        { text: 'Generating embeddings...', delay: 1500 },
-        { text: 'Analyzing semantic similarity...', delay: 2000 },
-        { text: 'Extracting keywords...', delay: 2500 },
-        { text: 'Calculating final score...', delay: 3000 },
+        'Uploading resume...',
+        'Extracting text content...',
+        'Generating embeddings...',
+        'Analyzing semantic similarity...',
+        'Extracting keywords...',
+        'Calculating final score...',
     ];
-    
+
     let currentStep = 0;
     const interval = setInterval(() => {
         if (currentStep < steps.length) {
-            elements.loadingText.textContent = steps[currentStep].text;
+            if (elements.loadingText) {
+                elements.loadingText.textContent = steps[currentStep];
+            }
             currentStep++;
-        } else {
-            clearInterval(interval);
         }
-    }, 500);
+    }, 1000);
+
+    return interval;
 }
 
 function showLoading() {
@@ -338,50 +386,71 @@ function hideLoading() {
    ========================================== */
 
 function displayResults(result) {
-    // Show results section
     elements.resultsSection.style.display = 'block';
-    
-    // Scroll to results
+
     setTimeout(() => {
         window.scrollTo({ top: elements.resultsSection.offsetTop - 100, behavior: 'smooth' });
     }, 100);
-    
-    // Display scores
+
     displayScores(result);
-    
-    // Display missing keywords
     displayMissingKeywords(result);
-    
-    // Generate recommendations
     generateRecommendations(result);
-    
-    // Display breakdown
     displayBreakdown(result);
 }
 
 function displayScores(result) {
-    const { final_score, semantic_score, keyword_score } = result;
-    
-    // Final Score
-    animateScore(elements.finalScore, final_score, '%');
-    animateProgressBar(elements.finalScoreBar, final_score);
-    elements.scoreStatus.textContent = getScoreStatus(final_score);
-    
-    // Semantic Score
-    animateScore(elements.semanticScore, semantic_score, '%');
-    animateProgressBar(elements.semanticScoreBar, semantic_score);
-    
-    // Keyword Score
-    animateScore(elements.keywordScore, keyword_score, '%');
-    animateProgressBar(elements.keywordScoreBar, keyword_score);
+
+    const finalScore =
+        Math.round(result.final_score * 100);
+
+    const semanticScore =
+        Math.round(result.semantic_score * 100);
+
+    const keywordScore =
+        Math.round(result.keyword_score * 100);
+
+    animateScore(
+        elements.finalScore,
+        finalScore,
+        '%'
+    );
+
+    animateProgressBar(
+        elements.finalScoreBar,
+        finalScore
+    );
+
+    elements.scoreStatus.textContent =
+        getScoreStatus(finalScore);
+
+    animateScore(
+        elements.semanticScore,
+        semanticScore,
+        '%'
+    );
+
+    animateProgressBar(
+        elements.semanticScoreBar,
+        semanticScore
+    );
+
+    animateScore(
+        elements.keywordScore,
+        keywordScore,
+        '%'
+    );
+
+    animateProgressBar(
+        elements.keywordScoreBar,
+        keywordScore
+    );
 }
 
 function animateScore(element, targetValue, suffix = '') {
     let currentValue = 0;
-    const increment = targetValue / 50; // 50 steps
-    const duration = 1500; // 1.5 seconds
-    const stepTime = duration / 50;
-    
+    const increment = targetValue / 50;
+    const stepTime = 1500 / 50;
+
     const timer = setInterval(() => {
         currentValue += increment;
         if (currentValue >= targetValue) {
@@ -408,9 +477,9 @@ function getScoreStatus(score) {
 
 function displayMissingKeywords(result) {
     const { missing_keywords, total_missing_keywords } = result;
-    
+
     elements.missingCount.textContent = total_missing_keywords || 0;
-    
+
     if (!missing_keywords || missing_keywords.length === 0) {
         elements.missingKeywords.innerHTML = `
             <div class="empty-state">
@@ -433,8 +502,7 @@ function displayMissingKeywords(result) {
 function generateRecommendations(result) {
     const { final_score, semantic_score, keyword_score, total_missing_keywords } = result;
     const recommendations = [];
-    
-    // Score-based recommendations
+
     if (final_score >= 75) {
         recommendations.push({
             icon: 'fa-thumbs-up',
@@ -451,24 +519,21 @@ function generateRecommendations(result) {
             text: 'Significant gaps identified. Carefully review if core requirements are met.',
         });
     }
-    
-    // Semantic score recommendations
+
     if (semantic_score < 60) {
         recommendations.push({
             icon: 'fa-brain',
             text: 'Low semantic alignment suggests experience may not directly match the role context.',
         });
     }
-    
-    // Keyword recommendations
+
     if (keyword_score < 50) {
         recommendations.push({
             icon: 'fa-key',
             text: 'Multiple required skills are missing. Verify if the candidate has equivalent competencies.',
         });
     }
-    
-    // Missing keywords recommendations
+
     if (total_missing_keywords > 10) {
         recommendations.push({
             icon: 'fa-list-check',
@@ -477,11 +542,10 @@ function generateRecommendations(result) {
     } else if (total_missing_keywords > 5) {
         recommendations.push({
             icon: 'fa-chart-line',
-            text: 'Some skill gaps present. Consider the candidate\'s learning ability and growth potential.',
+            text: "Some skill gaps present. Consider the candidate's learning ability and growth potential.",
         });
     }
-    
-    // Display recommendations
+
     elements.recommendations.innerHTML = recommendations
         .map(rec => `
             <div class="recommendation-item">
@@ -493,44 +557,53 @@ function generateRecommendations(result) {
 }
 
 function displayBreakdown(result) {
-    const { semantic_score, keyword_score } = result;
-    
-    // Semantic breakdown (60% weight)
-    const semanticContribution = (semantic_score * 0.6).toFixed(2);
-    animateProgressBar(elements.semanticBreakdown, semantic_score);
-    elements.semanticBreakdownValue.textContent = semanticContribution;
-    
-    // Keyword breakdown (40% weight)
-    const keywordContribution = (keyword_score * 0.4).toFixed(2);
-    animateProgressBar(elements.keywordBreakdown, keyword_score);
-    elements.keywordBreakdownValue.textContent = keywordContribution;
-}
+
+    const semanticPercent =
+        result.semantic_score * 100;
+
+    const keywordPercent =
+        result.keyword_score * 100;
+
+    const semanticContribution =
+        (semanticPercent * 0.7).toFixed(2);
+
+    const keywordContribution =
+        (keywordPercent * 0.3).toFixed(2);
+
+    animateProgressBar(
+        elements.semanticBreakdown,
+        semanticPercent
+    );
+
+    animateProgressBar(
+        elements.keywordBreakdown,
+        keywordPercent
+    );
+
+    elements.semanticBreakdownValue.textContent =
+        semanticContribution;
+
+    elements.keywordBreakdownValue.textContent =
+        keywordContribution;
+}  elements.keywordBreakdownValue.textContent = keywordContribution;
+
 
 /* ==========================================
    UTILITY FUNCTIONS
    ========================================== */
 
 function clearAll() {
-    // Reset file
     removeFile();
-    
-    // Clear job description
+
     elements.jobDescription.value = '';
     elements.charCount.textContent = '0';
-    
-    // Hide results
     elements.resultsSection.style.display = 'none';
-    
-    // Reset state
+
     state.selectedFile = null;
     state.analysisResult = null;
-    
-    // Update button state
+
     updateAnalyzeButtonState();
-    
-    // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    
     showToast('Form cleared', 'info');
 }
 
@@ -539,24 +612,22 @@ function exportResults() {
         showToast('No results to export', 'error');
         return;
     }
-    
+
     const { final_score, semantic_score, keyword_score, missing_keywords, total_missing_keywords } = state.analysisResult;
-    
-    // Create export data
+
     const exportData = {
         timestamp: new Date().toISOString(),
         resume_file: state.selectedFile?.name || 'Unknown',
         scores: {
-            final_score: final_score,
-            semantic_score: semantic_score,
-            keyword_score: keyword_score,
+            final_score,
+            semantic_score,
+            keyword_score,
         },
-        missing_keywords: missing_keywords,
-        total_missing_keywords: total_missing_keywords,
+        missing_keywords,
+        total_missing_keywords,
         status: getScoreStatus(final_score),
     };
-    
-    // Create and download JSON file
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -566,39 +637,36 @@ function exportResults() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     showToast('Results exported successfully', 'success');
 }
 
 function showToast(message, type = 'info') {
     const toast = elements.toast;
     const icon = toast.querySelector('.toast-icon');
-    
-    // Set icon based on type
+
     const icons = {
         success: 'fa-check-circle',
         error: 'fa-exclamation-circle',
         warning: 'fa-exclamation-triangle',
         info: 'fa-info-circle',
     };
-    
-    icon.className = `toast-icon fas ${icons[type] || icons.info}`;
-    
-    // Set colors based on type
+
     const colors = {
         success: '#10b981',
         error: '#ef4444',
         warning: '#f59e0b',
         info: '#3b82f6',
     };
-    
+
+    if (icon) {
+        icon.className = `toast-icon fas ${icons[type] || icons.info}`;
+    }
+
     toast.style.backgroundColor = colors[type] || colors.info;
-    
-    // Show message
     elements.toastMessage.textContent = message;
     toast.classList.add('show');
-    
-    // Hide after 3 seconds
+
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
@@ -612,16 +680,43 @@ function escapeHtml(text) {
 
 async function checkBackendHealth() {
     try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/health/`);
-        if (response.ok) {
-            console.log('✅ Backend is healthy');
-        } else {
-            console.warn('⚠️ Backend health check failed');
-            showToast('Warning: Backend connection issue detected', 'warning');
+
+        const controller = new AbortController();
+
+        const timeoutId = setTimeout(
+            () => controller.abort(),
+            5000
+        );
+
+        const response = await fetch(
+            `${CONFIG.API_BASE_URL}/health/`,
+            {
+                method: 'GET',
+                signal: controller.signal
+            }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
+
+        const data = await response.json();
+
+        console.log('✅ Backend healthy:', data);
+
     } catch (error) {
-        console.error('❌ Backend is not reachable:', error);
-        showToast('Cannot connect to backend server. Please ensure it is running.', 'error');
+
+        console.error(
+            '❌ Backend unreachable:',
+            error
+        );
+
+        showToast(
+            'Backend server unavailable',
+            'error'
+        );
     }
 }
 
@@ -630,27 +725,23 @@ async function checkBackendHealth() {
    ========================================== */
 
 document.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + K: Focus job description
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         elements.jobDescription.focus();
     }
-    
-    // Ctrl/Cmd + Enter: Analyze (if button is enabled)
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         if (!elements.analyzeBtn.disabled) {
             e.preventDefault();
             analyzeResume();
         }
     }
-    
-    // Ctrl/Cmd + R: Clear all
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
         e.preventDefault();
         clearAll();
     }
-    
-    // Ctrl/Cmd + D: Toggle dark mode
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
         toggleTheme();
@@ -661,7 +752,6 @@ document.addEventListener('keydown', (e) => {
    EXPORT FOR DEBUGGING
    ========================================== */
 
-// Make state available for debugging in console
 window.ATSDebug = {
     state,
     config: CONFIG,
